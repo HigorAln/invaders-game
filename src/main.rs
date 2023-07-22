@@ -5,19 +5,29 @@ use crossterm::{
     ExecutableCommand,
 };
 use invaders::{
-    frame::{self, new_frame, Drawable},
+    frame::{self, new_frame, Drawable, Frame},
     invaders::Invaders,
     player::Player,
     render,
+    score::Score,
 };
 use rusty_audio::Audio;
 use std::{
     error::Error,
     io,
-    sync::mpsc,
+    sync::mpsc::{self, Receiver},
     thread,
     time::{Duration, Instant},
 };
+fn render_screen(render_rx: Receiver<Frame>) {
+    let mut last_frame = frame::new_frame();
+    let mut stdout = io::stdout();
+    render::render(&mut stdout, &last_frame, &last_frame, true);
+    while let Ok(curr_frame) = render_rx.recv() {
+        render::render(&mut stdout, &last_frame, &curr_frame, false);
+        last_frame = curr_frame;
+    }
+}
 
 fn main() -> Result<(), Box<dyn Error>> {
     let mut audio = Audio::new();
@@ -34,30 +44,17 @@ fn main() -> Result<(), Box<dyn Error>> {
     let mut stdout = io::stdout();
     terminal::enable_raw_mode()?;
     stdout.execute(EnterAlternateScreen)?;
-    stdout.execute(Hide);
+    stdout.execute(Hide)?;
 
     // Render loop in a separate thread
     let (render_tx, render_rx) = mpsc::channel();
-    let render_handle = thread::spawn(move || {
-        let mut last_frame: Vec<Vec<&str>> = frame::new_frame();
-        let mut stdout: io::Stdout = io::stdout();
-        render::render(&mut stdout, &last_frame, &last_frame, true);
-
-        loop {
-            let curr_frame: Vec<Vec<&str>> = match render_rx.recv() {
-                Ok(x) => x,
-                Err(_) => break,
-            };
-
-            render::render(&mut stdout, &last_frame, &curr_frame, false);
-            last_frame = curr_frame
-        }
-    });
+    let render_handle = thread::spawn(move || render_screen(render_rx));
 
     // Game Loop
     let mut player = Player::new();
     let mut instant = Instant::now();
     let mut invaders = Invaders::new();
+    let mut score = Score::new();
     'gameloop: loop {
         // Per-frame init
         let delta = instant.elapsed();
@@ -89,12 +86,13 @@ fn main() -> Result<(), Box<dyn Error>> {
         if invaders.update(delta) {
             audio.play("move");
         }
-        if player.detect_hits(&mut invaders) {
+        let hits: u16 = player.detect_hits(&mut invaders);
+        if hits > 0 {
             audio.play("explode");
+            score.add_points(hits);
         }
-
         // Draw & render
-        let drawables: Vec<&dyn Drawable> = vec![&player, &invaders];
+        let drawables: Vec<&dyn Drawable> = vec![&player, &invaders, &score];
         for drawable in drawables {
             drawable.draw(&mut curr_frame);
         }

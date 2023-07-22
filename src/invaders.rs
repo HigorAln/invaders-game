@@ -10,6 +10,7 @@ use crate::{
 pub struct Invader {
     pub x: usize,
     pub y: usize,
+    points: u16,
 }
 
 pub struct Invaders {
@@ -30,7 +31,7 @@ impl Invaders {
                     && (x % 2 == 0)
                     && (y % 2 == 0)
                 {
-                    army.push(Invader { x, y })
+                    army.push(Invader { x, y, points: 1 })
                 }
             }
         }
@@ -85,16 +86,17 @@ impl Invaders {
     pub fn reached_bottom(&self) -> bool {
         self.army.iter().any(|invader| invader.y >= NUM_ROWS - 1)
     }
-    pub fn kill_invader_at(&mut self, x: usize, y: usize) -> bool {
+    pub fn kill_invader_at(&mut self, x: usize, y: usize) -> u16 {
         if let Some(idx) = self
             .army
             .iter()
             .position(|invader| (invader.x == x) && (invader.y == y))
         {
+            let points = self.army[idx].points;
             self.army.remove(idx);
-            true
+            points
         } else {
-            false
+            0
         }
     }
 }
@@ -106,9 +108,9 @@ impl Drawable for Invaders {
                 / self.move_timer.duration.as_secs_f32())
                 > 0.5
             {
-                "x"
+                'x'
             } else {
-                "+"
+                '+'
             };
         }
     }
